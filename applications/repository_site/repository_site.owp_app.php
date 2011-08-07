@@ -6,7 +6,7 @@ class owp_app_repository_site extends owp_app_base {
 		owp_core::call ( "mysql", "connect", array (
 			"localhost", 
 			"dilesoft", 
-			"jrFM3qa8", 
+			"", 
 			"repository" ) );
 		
 		$html = owp_core::call ( "repository", "list_all" );
