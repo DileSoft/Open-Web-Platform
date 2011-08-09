@@ -1,4 +1,3 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <html>
 <head>
 </head>
@@ -9,7 +8,7 @@
 	</owp_block>
 	<owp_block type="static_page"/>
 	<owp_block name="footer">
-		© 2011
+		<owp_block name="copy">© 2011</owp_block>
 	</owp_block>
 </body>
 </html>

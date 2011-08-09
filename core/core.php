@@ -11,6 +11,8 @@ class owp_core {
 	
 	protected static $applications_processes = array ();
 	
+	protected static $applications_path = array ();
+	
 	protected static $applications = array ();
 	
 	protected static $libraries = array ();
@@ -27,17 +29,16 @@ class owp_core {
 			return false;
 		}
 		
-		return realpath ( dirname ( __FILE__ ) . "/../applications/{$app}/{$file}" );
+		return realpath ( self::$applications_path [$app] . "/{$file}" );
 	}
 	
 	public static function app($name) {
-		
-		if (!isset(self::$applications_processes [$name]))
-		{
-			self::start($name);
+
+		if (! isset ( self::$applications_processes [$name] )) {
+			self::start ( $name );
 		}
 		
-		return self::$applications_processes [$name];
+		return self::$applications_processes[$name][0];
 	}
 	
 	public static function error($app, $name, $code, $comment) {
@@ -68,44 +69,75 @@ class owp_core {
 		self::autoload ();
 	}
 	
+	protected static function dir_tree($dir) {
+		$dir = realpath ( $dir );
+		
+		$files = '';
+		$stack [] = $dir;
+		while ( $stack ) {
+			$thisdir = array_pop ( $stack );
+			if ($dircont = scandir ( $thisdir )) {
+				foreach ( $dircont as $key => $file ) {
+					if ($file !== '.' && $file !== '..') {
+						$current_file = "{$thisdir}/{$file}";
+						if (is_file ( $current_file )) {
+							$files [] = array (
+									"path" => $thisdir, 
+									"file" => $file );
+						} elseif (is_dir ( $current_file )) {
+							$stack [] = $current_file;
+						}
+					}
+				}
+			}
+		}
+		return $files;
+	}
+	
 	protected static function autoload() {
 		$path = realpath ( dirname ( __FILE__ ) . "/../libraries" );
-		$libs = scandir ( $path );
+		$libs = self::dir_tree ( $path );
 		
 		foreach ( $libs as $lib ) {
-			if ($lib == "." || $lib == "..") {
+			if (! preg_match ( '/^(.+)\.owp_lib.php$/', $lib ["file"], $matches )) {
 				continue;
 			}
-			require_once $path . "/" . $lib . "/{$lib}.owp_lib.php";
 			
-			if (file_exists ( $path . "/" . $lib . "/manifest.xml" )) {
-				$manifest = simplexml_load_file ( $path . "/" . $lib . "/manifest.xml" );
+			$name = $matches [1];
+			
+			require_once ($lib ["path"] . "/" . $lib ["file"]);
+			
+			if (file_exists ( $lib ["path"] . "/{$name}.manifest.xml" )) {
+				$manifest = simplexml_load_file ( $lib ["path"] . "/{$name}.manifest.xml" );
 				if ($manifest->autoload) {
-					self::library($lib);
+					self::library ( $name );
 				}
 			}
 		}
 		
 		$path = realpath ( dirname ( __FILE__ ) . "/../applications" );
-		$apps = scandir ( $path );
+		$apps = self::dir_tree ( $path );
 		
 		foreach ( $apps as $app ) {
-			if ($app == "." || $app == "..") {
-				continue;
+			if (preg_match ( '/^(.+)\.owp_app\.php$/', $app ["file"], $matches )) {
+				
+				$name = $matches [1];
+				
+				require_once ($app ["path"] . "/" . $app ["file"]);
+				self::$applications_path [$name] = $app ["path"];
 			}
-			
-			require_once $path . "/" . $app . "/{$app}.owp_app.php";
 		}
 		
 		foreach ( $apps as $app ) {
-			if ($app == "." || $app == "..") {
-				continue;
-			}
-			
-			if (file_exists ( $path . "/" . $app . "/manifest.xml" )) {
-				$manifest = simplexml_load_file ( $path . "/" . $app . "/manifest.xml" );
-				if ($manifest->autoload) {
-					self::start ( $app, true );
+			if (preg_match ( '/^(.+)\.owp_app\.php$/', $app ["file"], $matches )) {
+				
+				$name = $matches [1];
+				
+				if (file_exists ( $app ["path"] . "/{$name}.manifest.xml" )) {
+					$manifest = simplexml_load_file ( $app ["path"] . "/{$name}.manifest.xml" );
+					if ($manifest->autoload) {
+						self::start ( $name, true );
+					}
 				}
 			}
 		}
@@ -125,7 +157,7 @@ class owp_core {
 		}
 	}
 	
-	public static function call($application, $method, $data = array(), $new_instance = false) {
+	public static function call($application, $method, $data = array()) {
 		/**
 		 * 
 		 * 
@@ -140,20 +172,41 @@ class owp_core {
 		return dirname ( dirname ( __FILE__ ) );
 	}
 	
-	public static function start($application, $autoload = false) {
+	public static function start_app_instance($application) {
 		$class = "owp_app_{$application}";
-		$app = self::$applications_running [$application] = new $class ( $application );
-		self::$applications_processes [$application] = new owp_app_process ( $application );
 		
-		if ($autoload) {
-			self::log ( "autoload $application" );
-			$app->autoload ();
-		} else {
-			self::log ( "load $application" );
-			$app->start ();
+		if (!isset(self::$applications_running [$application]))
+		{
+			$app = self::$applications_running [$application] = new $class ( $application );
 		}
 		
+		$process = self::$applications_processes [$application][] = new owp_app_process ( $application );
+		
+		$app->start ();
+		
 		return new owp_app_process ( $application );
+	}
+	
+	public static function start($application, $autoload = false) {
+		
+		if (! isset ( self::$applications_running [$application] )) {
+			
+			$class = "owp_app_{$application}";
+			$app = self::$applications_running [$application] = new $class ( $application );
+			$process = self::$applications_processes [$application][] = new owp_app_process ( $application );
+			
+			if ($autoload) {
+				self::log ( "autoload $application" );
+				$app->autoload ();
+			} else {
+				self::log ( "load $application" );
+				$app->start ();
+			}
+			
+			return $process;
+		} else {
+			return self::$applications_processes [$application];
+		}
 	}
 	
 	public static function end($application) {

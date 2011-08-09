@@ -39,7 +39,9 @@ abstract class owp_app_gui_block_base extends owp_app_base {
 		
 		$this->prepare();
 		
+		
 		$this->html = preg_replace_callback('#\<owp\:var name\=\"([a-z0-9\_\-]+)\"\/\>#i', array($this, "parse_variables"), $this->template);
+		$this->html = preg_replace_callback('#\{\{owp\:var name\=\"([a-z0-9\_\-]+)\"\/\}\}#i', array($this, "parse_variables"), $this->html);
 		$this->html = $this->app_gui->parse_blocks($this->html);
 		
 		return $this->html;
